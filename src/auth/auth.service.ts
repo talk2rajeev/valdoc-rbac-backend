@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { User } from '../rbac/entities/user.entity';
+import { CreateUserDto } from './dto/create-user.dto';
 
 @Injectable()
 export class AuthService {
@@ -12,6 +13,20 @@ export class AuthService {
     private readonly userRepository: Repository<User>,
     private readonly jwtService: JwtService,
   ) {}
+
+  async register(createUserDto: CreateUserDto): Promise<Omit<User, 'passwordHash' | 'refreshToken'>> {
+    const { password, ...userData } = createUserDto;
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const user = this.userRepository.create({
+      ...userData,
+      passwordHash: hashedPassword,
+    });
+
+    const savedUser = await this.userRepository.save(user);
+    const { passwordHash, refreshToken, ...result } = savedUser;
+    return result;
+  }
 
   async validateUser(username: string, password: string): Promise<Omit<User, 'passwordHash' | 'refreshToken'> | null> {
     const user = await this.userRepository.findOne({ where: { username } });
@@ -62,11 +77,11 @@ export class AuthService {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         secret: process.env.JWT_SECRET || 'changeme-secret',
-        expiresIn: (process.env.JWT_EXPIRES_IN as any) || '1h',
+        expiresIn: '60m',
       }),
       this.jwtService.signAsync(payload, {
         secret: process.env.JWT_REFRESH_SECRET || 'refresh-secret',
-        expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN as any) || '7d',
+        expiresIn: '4h',
       }),
     ]);
 

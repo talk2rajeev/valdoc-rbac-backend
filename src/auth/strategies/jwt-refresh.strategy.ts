@@ -10,7 +10,7 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         (request: Request) => {
-          return request?.body?.refresh_token || request?.query?.refresh_token;
+          return request?.cookies?.refresh_token;
         },
       ]),
       ignoreExpiration: false,
@@ -20,9 +20,9 @@ export class JwtRefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh'
   }
 
   async validate(req: Request, payload: any) {
-    const refreshToken = req.body?.refresh_token || req.query?.refresh_token;
+    const refreshToken = req.cookies?.refresh_token;
     if (!refreshToken) {
-        throw new UnauthorizedException();
+      throw new UnauthorizedException();
     }
     return { id: payload.sub, username: payload.username, refreshToken };
   }
