@@ -1,10 +1,13 @@
 import { Controller, Post, Request, UseGuards, HttpCode, HttpStatus, Body, Res } from '@nestjs/common';
-import { Response } from 'express';
+import { CookieOptions, Response } from 'express';
 import { AuthService } from './auth.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
+
+const REFRESH_TOKEN_COOKIE_NAME = 'refreshToken';
+const REFRESH_TOKEN_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
 @Controller('auth')
 export class AuthController {
@@ -19,45 +22,35 @@ export class AuthController {
   /**
    * POST /auth/login
    * Body: { username: string, password: string }
-   * Returns: { access_token: string, refresh_token: string }
+   * Returns: { username: string, accessToken: string }
    */
   @UseGuards(LocalAuthGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Request() req: any, @Res({ passthrough: true }) res: Response) {
-    const tokens = await this.authService.login(req.user);
-    
-    res.cookie('refresh_token', tokens.refresh_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // Use secure in production
-      sameSite: 'strict',
-      maxAge: 4 * 60 * 60 * 1000, // 4 hours in milliseconds
-    });
+    const { refreshToken, ...responseBody } = await this.authService.login(req.user);
 
-    return { access_token: tokens.access_token };
+    this.setRefreshTokenCookie(res, refreshToken);
+
+    return responseBody;
   }
 
   /**
    * POST /auth/refresh
-   * Body: { refresh_token: string }
-   * Returns: { access_token: string, refresh_token: string }
+   * Cookie: refreshToken
+   * Returns: { accessToken: string }
    */
   @UseGuards(JwtRefreshGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refreshTokens(@Request() req: any, @Res({ passthrough: true }) res: Response) {
     const userId = req.user.id;
-    const refreshToken = req.user.refreshToken;
+    const refreshToken = req.cookies?.[REFRESH_TOKEN_COOKIE_NAME];
     const tokens = await this.authService.refreshTokens(userId, refreshToken);
 
-    res.cookie('refresh_token', tokens.refresh_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 4 * 60 * 60 * 1000, // 4 hours in milliseconds
-    });
+    this.setRefreshTokenCookie(res, tokens.refreshToken);
 
-    return { access_token: tokens.access_token };
+    return { accessToken: tokens.accessToken };
   }
 
   /**
@@ -67,7 +60,31 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(@Request() req: any) {
-    return this.authService.logout(req.user.id);
+  async logout(@Request() req: any, @Res({ passthrough: true }) res: Response) {
+    await this.authService.logout(req.user.id);
+    res.clearCookie(REFRESH_TOKEN_COOKIE_NAME, this.getRefreshTokenClearCookieOptions());
+
+    return { success: true };
+  }
+
+  private setRefreshTokenCookie(res: Response, refreshToken: string) {
+    res.cookie(REFRESH_TOKEN_COOKIE_NAME, refreshToken, this.getRefreshTokenCookieOptions());
+  }
+
+  private getRefreshTokenCookieOptions(): CookieOptions {
+    return {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: REFRESH_TOKEN_COOKIE_MAX_AGE,
+    };
+  }
+
+  private getRefreshTokenClearCookieOptions(): CookieOptions {
+    return {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+    };
   }
 }
