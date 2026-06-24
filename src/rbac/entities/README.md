@@ -314,6 +314,257 @@ auth.tenants
 
 In short: parent companies own tenants, tenants own users/locations/employees, users receive roles and optional direct permissions, roles receive permissions, and permissions can be grouped for organization.
 
+## Create Tables
+
+Create below tables for working in this project. This is the final table structure after applying the previous table changes, so this script does not include separate `ALTER TABLE` queries.
+
+```sql
+CREATE SCHEMA IF NOT EXISTS auth;
+
+CREATE TABLE auth.parent_companies (
+    parent_company_sys_id SERIAL PRIMARY KEY,
+    corporate_name VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE auth.tenants (
+    tenant_sys_id SERIAL PRIMARY KEY,
+    parent_company_id INTEGER REFERENCES auth.parent_companies(parent_company_sys_id)
+        ON DELETE SET NULL,
+    plant_name VARCHAR(255) NOT NULL,
+    company_type VARCHAR(50) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    CONSTRAINT unique_plant_per_corp
+        UNIQUE (parent_company_id, plant_name)
+);
+
+CREATE TABLE auth.users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(100),
+    is_active BOOLEAN DEFAULT TRUE,
+    last_login_at TIMESTAMPTZ,
+    refresh_token TEXT,
+    tenant_id INTEGER REFERENCES auth.tenants(tenant_sys_id)
+        ON DELETE SET NULL,
+    user_type VARCHAR(50) DEFAULT 'CUSTOMER',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE auth.roles (
+    role_sys_id SERIAL PRIMARY KEY,
+    role_name VARCHAR(100) NOT NULL UNIQUE,
+    is_internal BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE auth.permission_groups (
+    permission_group_sys_id SERIAL PRIMARY KEY,
+    group_name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE auth.permissions (
+    permission_sys_id SERIAL PRIMARY KEY,
+    permission_code VARCHAR(100) NOT NULL UNIQUE,
+    display_name VARCHAR(100) NOT NULL,
+    group_id INTEGER REFERENCES auth.permission_groups(permission_group_sys_id)
+        ON DELETE SET NULL,
+    target_tenant_type VARCHAR(50) DEFAULT 'BOTH',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE auth.user_roles (
+    user_id INTEGER NOT NULL REFERENCES auth.users(id)
+        ON DELETE CASCADE,
+    role_id INTEGER NOT NULL REFERENCES auth.roles(role_sys_id)
+        ON DELETE CASCADE,
+    assigned_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, role_id)
+);
+
+CREATE TABLE auth.role_permissions (
+    role_id INTEGER NOT NULL REFERENCES auth.roles(role_sys_id)
+        ON DELETE CASCADE,
+    permission_id INTEGER NOT NULL REFERENCES auth.permissions(permission_sys_id)
+        ON DELETE CASCADE,
+    assigned_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (role_id, permission_id)
+);
+
+CREATE TABLE auth.user_permissions (
+    user_id INTEGER NOT NULL REFERENCES auth.users(id)
+        ON DELETE CASCADE,
+    permission_id INTEGER NOT NULL REFERENCES auth.permissions(permission_sys_id)
+        ON DELETE CASCADE,
+    conditions JSONB DEFAULT '{}',
+    assigned_at TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (user_id, permission_id)
+);
+
+CREATE TABLE auth.work_location_types (
+    location_type_sys_id BIGSERIAL PRIMARY KEY,
+    tenant_id INTEGER NOT NULL REFERENCES auth.tenants(tenant_sys_id)
+        ON DELETE CASCADE,
+    location_type_name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_tenant_location_type
+        UNIQUE (tenant_id, location_type_name)
+);
+
+CREATE TABLE auth.work_locations (
+    work_location_sys_id BIGSERIAL PRIMARY KEY,
+    tenant_id INTEGER NOT NULL REFERENCES auth.tenants(tenant_sys_id)
+        ON DELETE CASCADE,
+    location_type_id BIGINT NOT NULL REFERENCES auth.work_location_types(location_type_sys_id),
+    work_location_group VARCHAR(150) NOT NULL,
+    work_location_name VARCHAR(150) NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_tenant_location_details
+        UNIQUE (
+            tenant_id,
+            location_type_id,
+            work_location_group,
+            work_location_name
+        )
+);
+
+CREATE TABLE employees (
+    employee_sys_id BIGSERIAL PRIMARY KEY,
+    tenant_id INTEGER NOT NULL REFERENCES auth.tenants(tenant_sys_id)
+        ON DELETE CASCADE,
+    user_id INTEGER UNIQUE REFERENCES auth.users(id)
+        ON DELETE SET NULL,
+    work_location_id BIGINT REFERENCES auth.work_locations(work_location_sys_id)
+        ON DELETE SET NULL,
+    employee_id_code VARCHAR(50) NOT NULL,
+    first_name VARCHAR(100) NOT NULL,
+    last_name VARCHAR(100) NOT NULL,
+    designation VARCHAR(150),
+    department VARCHAR(150),
+    contact_number VARCHAR(20),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_tenant_employee_code
+        UNIQUE (tenant_id, employee_id_code)
+);
+```
+
+## Dummy Data
+
+The following INSERT queries are sample seed data from the latest SQL. These can be used as reference data when setting up a fresh local database.
+
+```sql
+INSERT INTO auth.roles (role_name, is_internal) VALUES
+('SYSTEM_ADMIN',       true),
+('GLOBAL_SUPER_ADMIN', true),
+('VENDOR_ADMIN',       false),
+('FIELD_ENGINEER',     false),
+('PLANT_APP_ADMIN',    false),
+('CUSTOMER_END_USER',  false);
+```
+
+```sql
+INSERT INTO auth.permission_groups (group_name, description) VALUES
+('Global Infrastructure', 'Platform level system settings and tenant orchestration'),
+('Identity & Access', 'User accounts, roles, and security permissions configuration'),
+('Facility Master Data', 'Management of plants, units, departments, and rooms'),
+('Operational Assets', 'Devices under calibration (DUC) and reference standard instruments'),
+('Workflow Management', 'Service order generation, scheduling, and engineering assignments'),
+('Testing & Execution', 'Field data capture, form submissions, and QR operations'),
+('Compliance & Analytics', 'Certificates, MIS reporting, LIMS tracking, and immutable audit logs');
+```
+
+Role-permission seed samples:
+
+These queries expect the roles above and matching records in `auth.permissions` to already exist.
+
+```sql
+INSERT INTO auth.role_permissions (role_id, permission_id)
+SELECT
+    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'VENDOR_ADMIN'),
+    permission_sys_id
+FROM auth.permissions
+WHERE permission_code IN (
+    'vendor.roster.manage',
+    'instrument.reference.edit',
+    'instrument.reference.view',
+    'service_order.create',
+    'service_order.schedule',
+    'engineer.assign.job',
+    'view.master.employee',
+    'view.plant',
+    'view.room',
+    'duc.master.view',
+    'certificate.download',
+    'label.qr.reconcile',
+    'audit.trail.view',
+    'report.mis.export'
+);
+
+INSERT INTO auth.role_permissions (role_id, permission_id)
+SELECT
+    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'FIELD_ENGINEER'),
+    permission_sys_id
+FROM auth.permissions
+WHERE permission_code IN (
+    'instrument.reference.view',
+    'calibration.execute.test',
+    'caaldoc.submit.form',
+    'view.plant',
+    'view.room',
+    'duc.master.view',
+    'label.qr.reconcile'
+);
+
+INSERT INTO auth.role_permissions (role_id, permission_id)
+SELECT
+    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'PLANT_APP_ADMIN'),
+    permission_sys_id
+FROM auth.permissions
+WHERE permission_code IN (
+    'plant.config.configure',
+    'plant.structure.manage',
+    'customer.staff.manage',
+    'lims.portal.dashboard',
+    'certificate.approve',
+    'view.master.employee',
+    'edit.master.employee',
+    'view.plant',
+    'edit.plant',
+    'view.room',
+    'edit.room',
+    'duc.master.view',
+    'duc.master.edit',
+    'certificate.download',
+    'label.qr.reconcile',
+    'audit.trail.view',
+    'report.mis.export'
+);
+
+INSERT INTO auth.role_permissions (role_id, permission_id)
+SELECT
+    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'CUSTOMER_END_USER'),
+    permission_sys_id
+FROM auth.permissions
+WHERE permission_code IN (
+    'lims.portal.dashboard',
+    'view.plant',
+    'view.room',
+    'duc.master.view',
+    'certificate.download',
+    'audit.trail.view',
+    'report.mis.export'
+);
+```
+
 ## Source Files and SQL Coverage
 
 | Source | Table coverage |
@@ -325,4 +576,3 @@ In short: parent companies own tenants, tenants own users/locations/employees, u
 | `permission.entity.ts` | `auth.permissions` base fields; missing latest `target_tenant_type` column. |
 | `role-permission.entity.ts` | Older `auth.role_permissions` shape; should be synced to latest `role_id` column. |
 | Latest SQL update | Adds/changes `auth.user_permissions`, `auth.parent_companies`, `auth.tenants`, `auth.work_location_types`, `auth.work_locations`, `employees`, `auth.users.tenant_id`, `auth.users.user_type`, `auth.permissions.target_tenant_type`, and `auth.role_permissions.role_id`. |
-
