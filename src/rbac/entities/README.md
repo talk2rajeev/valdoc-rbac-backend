@@ -318,178 +318,47 @@ In short: parent companies own tenants, tenants own users/locations/employees, u
 
 Create below tables for working in this project. This is the final table structure after applying the previous table changes, so this script does not include separate `ALTER TABLE` queries.
 
-```sql
-CREATE SCHEMA IF NOT EXISTS auth;
-
-CREATE TABLE auth.parent_companies (
-    parent_company_sys_id SERIAL PRIMARY KEY,
-    corporate_name VARCHAR(255) NOT NULL UNIQUE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE auth.tenants (
-    tenant_sys_id SERIAL PRIMARY KEY,
-    parent_company_id INTEGER REFERENCES auth.parent_companies(parent_company_sys_id)
-        ON DELETE SET NULL,
-    plant_name VARCHAR(255) NOT NULL,
-    company_type VARCHAR(50) NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    CONSTRAINT unique_plant_per_corp
-        UNIQUE (parent_company_id, plant_name)
-);
-
-CREATE TABLE auth.users (
-    id SERIAL PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    email VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
-    full_name VARCHAR(100),
-    is_active BOOLEAN DEFAULT TRUE,
-    last_login_at TIMESTAMPTZ,
-    refresh_token TEXT,
-    tenant_id INTEGER REFERENCES auth.tenants(tenant_sys_id)
-        ON DELETE SET NULL,
-    user_type VARCHAR(50) DEFAULT 'CUSTOMER',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE auth.roles (
-    role_sys_id SERIAL PRIMARY KEY,
-    role_name VARCHAR(100) NOT NULL UNIQUE,
-    is_internal BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE auth.permission_groups (
-    permission_group_sys_id SERIAL PRIMARY KEY,
-    group_name VARCHAR(100) NOT NULL UNIQUE,
-    description TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE auth.permissions (
-    permission_sys_id SERIAL PRIMARY KEY,
-    permission_code VARCHAR(100) NOT NULL UNIQUE,
-    display_name VARCHAR(100) NOT NULL,
-    group_id INTEGER REFERENCES auth.permission_groups(permission_group_sys_id)
-        ON DELETE SET NULL,
-    target_tenant_type VARCHAR(50) DEFAULT 'BOTH',
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE auth.user_roles (
-    user_id INTEGER NOT NULL REFERENCES auth.users(id)
-        ON DELETE CASCADE,
-    role_id INTEGER NOT NULL REFERENCES auth.roles(role_sys_id)
-        ON DELETE CASCADE,
-    assigned_at TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (user_id, role_id)
-);
-
-CREATE TABLE auth.role_permissions (
-    role_id INTEGER NOT NULL REFERENCES auth.roles(role_sys_id)
-        ON DELETE CASCADE,
-    permission_id INTEGER NOT NULL REFERENCES auth.permissions(permission_sys_id)
-        ON DELETE CASCADE,
-    assigned_at TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (role_id, permission_id)
-);
-
-CREATE TABLE auth.user_permissions (
-    user_id INTEGER NOT NULL REFERENCES auth.users(id)
-        ON DELETE CASCADE,
-    permission_id INTEGER NOT NULL REFERENCES auth.permissions(permission_sys_id)
-        ON DELETE CASCADE,
-    conditions JSONB DEFAULT '{}',
-    assigned_at TIMESTAMPTZ DEFAULT NOW(),
-    PRIMARY KEY (user_id, permission_id)
-);
-
-CREATE TABLE auth.work_location_types (
-    location_type_sys_id BIGSERIAL PRIMARY KEY,
-    tenant_id INTEGER NOT NULL REFERENCES auth.tenants(tenant_sys_id)
-        ON DELETE CASCADE,
-    location_type_name VARCHAR(100) NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_tenant_location_type
-        UNIQUE (tenant_id, location_type_name)
-);
-
-CREATE TABLE auth.work_locations (
-    work_location_sys_id BIGSERIAL PRIMARY KEY,
-    tenant_id INTEGER NOT NULL REFERENCES auth.tenants(tenant_sys_id)
-        ON DELETE CASCADE,
-    location_type_id BIGINT NOT NULL REFERENCES auth.work_location_types(location_type_sys_id),
-    work_location_group VARCHAR(150) NOT NULL,
-    work_location_name VARCHAR(150) NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_tenant_location_details
-        UNIQUE (
-            tenant_id,
-            location_type_id,
-            work_location_group,
-            work_location_name
-        )
-);
-
-CREATE TABLE employees (
-    employee_sys_id BIGSERIAL PRIMARY KEY,
-    tenant_id INTEGER NOT NULL REFERENCES auth.tenants(tenant_sys_id)
-        ON DELETE CASCADE,
-    user_id INTEGER UNIQUE REFERENCES auth.users(id)
-        ON DELETE SET NULL,
-    work_location_id BIGINT REFERENCES auth.work_locations(work_location_sys_id)
-        ON DELETE SET NULL,
-    employee_id_code VARCHAR(50) NOT NULL,
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100) NOT NULL,
-    designation VARCHAR(150),
-    department VARCHAR(150),
-    contact_number VARCHAR(20),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT uq_tenant_employee_code
-        UNIQUE (tenant_id, employee_id_code)
-);
-```
-
-## Dummy Data
-
-The following INSERT queries are sample seed data from the latest SQL. These can be used as reference data when setting up a fresh local database.
-
-
-Parent Company
+-- =============================================================================
+-- STEP 1: Parent Companies
+-- =============================================================================
 ```sql
 INSERT INTO auth.parent_companies (corporate_name) 
 VALUES ('DR. Reddy''s Lab'), ('Biocon Ltd'), ('Cipla Pharmaceuticals'), ('Castor Engineering')
 ON CONFLICT (corporate_name) DO NOTHING;
 ```
 
-Tenants
+-- =============================================================================
+-- STEP 2: Tenants (Note: using 'Bangalore' to match references)
+-- =============================================================================
 ```sql
-INSERT INTO auth.tenants(parent_company_id, plant_name, company_type)
-values (1, 'Bangalore', 'CUSTOMER'), (1, 'Hyderabad', 'CUSTOMER'),  (2, 'Bangalore', 'CUSTOMER'), 
-(2, 'Vizag', 'CUSTOMER'), (3, 'Bangalore', 'CUSTOMER'), (4, 'Bangalore', 'CUSTOMER');
+INSERT INTO auth.tenants (parent_company_id, plant_name, company_type) VALUES 
+(1, 'Bangalore', 'CUSTOMER'), 
+(1, 'Hyderabad', 'CUSTOMER'),  
+(2, 'Bangalore', 'CUSTOMER'), 
+(2, 'Vizag', 'CUSTOMER'), 
+(3, 'Bangalore', 'CUSTOMER'), 
+(4, 'Bangalore', 'CUSTOMER');
 ```
 
---- Work location
+-- =============================================================================
+-- STEP 3: Work Location Types & Work Locations
+-- =============================================================================
 ```sql
-
 INSERT INTO auth.work_location_types (tenant_id, location_type_name) VALUES
 (1, 'Castor Site'),
 (1, 'Customer Site'),
 (1, 'Warehouse Storage')
 ON CONFLICT (tenant_id, location_type_name) DO NOTHING;
 
-
-INSERT INTO auth.work_locations (tenant_id, location_type_id, work_location_group, work_location_name)
-values (4, 1, 'Castor Head Office', 'Head office- Bangalore'),
-(4, 1, 'Castor Regional Site', 'Bangalore'), (4, 1, 'Castor Regional Site', 'Hyderabad'), (4, 1, 'Castor Regional Site', 'Chennai'),
-(1, 2, 'Dr Reddy Lab', 'DRLB1'), (1, 2, 'Dr Reddy Lab', 'FTO3'), (1, 2, 'Dr Reddy Lab', 'FTO9'), (2, 2, 'Biocon', 'BXXB1'); 
+INSERT INTO auth.work_locations (tenant_id, location_type_id, work_location_group, work_location_name) VALUES 
+(4, 1, 'Castor Head Office', 'Head office- Bangalore'),
+(4, 1, 'Castor Regional Site', 'Bangalore'), 
+(4, 1, 'Castor Regional Site', 'Hyderabad'), 
+(4, 1, 'Castor Regional Site', 'Chennai'),
+(1, 2, 'Dr Reddy Lab', 'DRLB1'), 
+(1, 2, 'Dr Reddy Lab', 'FTO3'), 
+(1, 2, 'Dr Reddy Lab', 'FTO9'), 
+(2, 2, 'Biocon', 'BXXB1'); 
 
 INSERT INTO auth.work_location_types (tenant_id, location_type_name) VALUES
 (1, 'Manufacturing Block'),
@@ -498,85 +367,9 @@ INSERT INTO auth.work_location_types (tenant_id, location_type_name) VALUES
 ON CONFLICT (tenant_id, location_type_name) DO NOTHING;
 ```
 
-users
-```sql
-
-INSERT INTO auth.users (username, email, password_hash, full_name, is_active, user_type, tenant_id) 
-VALUES 
-(
-    'superadmin', 
-    'superadmin@vaalpro.com', 
-    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
-    'System Administrator', 
-    TRUE, 
-    'INTERNAL', 
-    NULL
-),
-(
-    'admin', 
-    'admin@vaalpro.com', 
-    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
-    'Vaalpro Admin', 
-    TRUE, 
-    'INTERNAL', 
-    NULL
-),
-(
-    'castor_admin', 
-    'castor.v@castor.com', 
-    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
-    'Castor Admin', 
-    TRUE, 
-    'VENDOR', 
-    (SELECT tenant_sys_id FROM auth.tenants WHERE plant_name = 'Bengaluru Formulation Plant - Block A')
-),
-(
-    'amit.kumar', 
-    'field.engineer@testing.com', 
-    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
-    'Amit Kumar', 
-    TRUE, 
-    'VENDOR', 
-    (SELECT tenant_sys_id FROM auth.tenants WHERE plant_name = 'Bengaluru Formulation Plant - Block A')
-),
-(
-    'Reddys.admin.bangalore.fto3', 
-    'reddy.banmgalore@reddylab.com', 
-    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
-    'Plant Admin', 
-    TRUE, 
-    'CUSTOMER', 
-    (SELECT tenant_sys_id FROM auth.tenants WHERE plant_name = 'Bengaluru Formulation Plant - Block A')
-)
-ON CONFLICT (username) DO NOTHING;
-```
-
-User roles
-```sql
-INSERT INTO auth.user_roles (user_id, role_id) VALUES
-(
-    (SELECT id FROM auth.users WHERE username = 'superadmin'),
-    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'GLOBAL_SUPER_ADMIN')
-),
-(
-    (SELECT id FROM auth.users WHERE username = 'admin'),
-    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'SYSTEM_ADMIN')
-),
-(
-    (SELECT id FROM auth.users WHERE username = 'castor_admin'),
-    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'VENDOR_ADMIN')
-),
-(
-    (SELECT id FROM auth.users WHERE username = 'amit.kumar'),
-    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'FIELD_ENGINEER')
-),
-(
-    (SELECT id FROM auth.users WHERE username = 'Reddys.admin.bangalore.fto3'),
-    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'PLANT_APP_ADMIN')
-)
-ON CONFLICT (user_id, role_id) DO NOTHING;
-```
-
+-- =============================================================================
+-- STEP 4: Roles & Permission Groups
+-- =============================================================================
 ```sql
 INSERT INTO auth.roles (role_name, is_internal) VALUES
 ('SYSTEM_ADMIN',       true),
@@ -584,10 +377,9 @@ INSERT INTO auth.roles (role_name, is_internal) VALUES
 ('VENDOR_ADMIN',       false),
 ('FIELD_ENGINEER',     false),
 ('PLANT_APP_ADMIN',    false),
-('CUSTOMER_END_USER',  false);
-```
+('CUSTOMER_END_USER',  false)
+ON CONFLICT (role_name) DO NOTHING;
 
-```sql
 INSERT INTO auth.permission_groups (group_name, description) VALUES
 ('Global Infrastructure', 'Platform level system settings and tenant orchestration'),
 ('Identity & Access', 'User accounts, roles, and security permissions configuration'),
@@ -595,21 +387,18 @@ INSERT INTO auth.permission_groups (group_name, description) VALUES
 ('Operational Assets', 'Devices under calibration (DUC) and reference standard instruments'),
 ('Workflow Management', 'Service order generation, scheduling, and engineering assignments'),
 ('Testing & Execution', 'Field data capture, form submissions, and QR operations'),
-('Compliance & Analytics', 'Certificates, MIS reporting, LIMS tracking, and immutable audit logs');
+('Compliance & Analytics', 'Certificates, MIS reporting, LIMS tracking, and immutable audit logs')
+ON CONFLICT (group_name) DO NOTHING;
 ```
 
-Role-permission seed samples:
 
-These queries expect the roles above and matching records in `auth.permissions` to already exist.
-
+-- =============================================================================
+-- STEP 5: Individual System Permissions
+-- =============================================================================
 ```sql
-
 INSERT INTO auth.permissions (permission_code, display_name, group_id) VALUES
--- Identity / Vendor Roster
 ('vendor.roster.manage', 'Manage Vendor Roster', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Identity & Access')),
 ('customer.staff.manage', 'Manage Customer Staff', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Identity & Access')),
-
--- Master Data & Infrastructure
 ('plant.config.configure', 'Configure Plant Settings', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Global Infrastructure')),
 ('plant.structure.manage', 'Manage Plant Structural Hierarchy', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Global Infrastructure')),
 ('view.master.employee', 'View Master Employee Records', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Facility Master Data')),
@@ -618,34 +407,79 @@ INSERT INTO auth.permissions (permission_code, display_name, group_id) VALUES
 ('edit.plant', 'Edit Plant Data', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Facility Master Data')),
 ('view.room', 'View Rooms', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Facility Master Data')),
 ('edit.room', 'Edit Rooms', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Facility Master Data')),
-
--- Operational Assets
 ('instrument.reference.edit', 'Edit Reference Instruments', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Operational Assets')),
 ('instrument.reference.view', 'View Reference Instruments', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Operational Assets')),
 ('duc.master.view', 'View DUC Master List', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Operational Assets')),
 ('duc.master.edit', 'Edit DUC Master List', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Operational Assets')),
-
--- Workflows
 ('service_order.create', 'Create Service Orders', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Workflow Management')),
 ('service_order.schedule', 'Schedule Service Orders', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Workflow Management')),
 ('engineer.assign.job', 'Assign Jobs to Engineers', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Workflow Management')),
-
--- Testing & Field Execution
 ('calibration.execute.test', 'Execute Calibration Tests', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Testing & Execution')),
 ('caaldoc.submit.form', 'Submit Calibration Forms', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Testing & Execution')),
 ('label.qr.reconcile', 'Reconcile QR Labels', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Testing & Execution')),
-
--- Compliance & Dashboards
 ('lims.portal.dashboard', 'View LIMS Portal Dashboard', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Compliance & Analytics')),
 ('certificate.approve', 'Approve Compliance Certificates', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Compliance & Analytics')),
 ('certificate.download', 'Download Compliance Certificates', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Compliance & Analytics')),
 ('audit.trail.view', 'View Audit Trails', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Compliance & Analytics')),
 ('report.mis.export', 'Export MIS Reports', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Compliance & Analytics'))
 ON CONFLICT (permission_code) DO NOTHING;
+```
 
 
+-- =============================================================================
+-- STEP 6: Users Population (Fixed plant_name lookup to 'Bangalore')
+-- =============================================================================
+```sql
+INSERT INTO auth.users (username, email, password_hash, full_name, is_active, user_type, tenant_id) VALUES 
+(
+    'superadmin', 'superadmin@vaalpro.com', 
+    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
+    'System Administrator', TRUE, 'INTERNAL', NULL
+),
+(
+    'admin', 'admin@vaalpro.com', 
+    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
+    'Vaalpro Admin', TRUE, 'INTERNAL', NULL
+),
+(
+    'castor_admin', 'castor.v@castor.com', 
+    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
+    'Castor Admin', TRUE, 'VENDOR', 
+    (SELECT tenant_sys_id FROM auth.tenants WHERE plant_name = 'Bangalore' AND parent_company_id = 4)
+),
+(
+    'amit.kumar', 'field.engineer@testing.com', 
+    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
+    'Amit Kumar', TRUE, 'VENDOR', 
+    (SELECT tenant_sys_id FROM auth.tenants WHERE plant_name = 'Bangalore' AND parent_company_id = 4)
+),
+(
+    'Reddys.admin.bangalore.fto3', 'reddy.banmgalore@reddylab.com', 
+    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
+    'Plant Admin', TRUE, 'CUSTOMER', 
+    (SELECT tenant_sys_id FROM auth.tenants WHERE plant_name = 'Bangalore' AND parent_company_id = 1)
+)
+ON CONFLICT (username) DO NOTHING;
+```
 
--- VENDOR_ADMIN mapping
+
+-- =============================================================================
+-- STEP 7: User-to-Role Assignment Mappings
+-- =============================================================================
+```sql
+INSERT INTO auth.user_roles (user_id, role_id) VALUES
+( (SELECT id FROM auth.users WHERE username = 'superadmin'), (SELECT role_sys_id FROM auth.roles WHERE role_name = 'GLOBAL_SUPER_ADMIN') ),
+( (SELECT id FROM auth.users WHERE username = 'admin'), (SELECT role_sys_id FROM auth.roles WHERE role_name = 'SYSTEM_ADMIN') ),
+( (SELECT id FROM auth.users WHERE username = 'castor_admin'), (SELECT role_sys_id FROM auth.roles WHERE role_name = 'VENDOR_ADMIN') ),
+( (SELECT id FROM auth.users WHERE username = 'amit.kumar'), (SELECT role_sys_id FROM auth.roles WHERE role_name = 'FIELD_ENGINEER') ),
+( (SELECT id FROM auth.users WHERE username = 'Reddys.admin.bangalore.fto3'), (SELECT role_sys_id FROM auth.roles WHERE role_name = 'PLANT_APP_ADMIN') )
+ON CONFLICT (user_id, role_id) DO NOTHING;
+```
+
+-- =============================================================================
+-- STEP 8: Role-Permission Matrix Assignment
+-- =============================================================================
+```sql
 INSERT INTO auth.role_permissions (role_id, permission_id)
 SELECT (SELECT role_sys_id FROM auth.roles WHERE role_name = 'VENDOR_ADMIN'), permission_sys_id
 FROM auth.permissions WHERE permission_code IN (
@@ -653,17 +487,15 @@ FROM auth.permissions WHERE permission_code IN (
     'service_order.create', 'service_order.schedule', 'engineer.assign.job',
     'view.master.employee', 'view.plant', 'view.room', 'duc.master.view',
     'certificate.download', 'label.qr.reconcile', 'audit.trail.view', 'report.mis.export'
-);
+) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
--- FIELD_ENGINEER mapping
 INSERT INTO auth.role_permissions (role_id, permission_id)
 SELECT (SELECT role_sys_id FROM auth.roles WHERE role_name = 'FIELD_ENGINEER'), permission_sys_id
 FROM auth.permissions WHERE permission_code IN (
     'instrument.reference.view', 'calibration.execute.test', 'caaldoc.submit.form',
     'view.plant', 'view.room', 'duc.master.view', 'label.qr.reconcile'
-);
+) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
--- PLANT_APP_ADMIN mapping
 INSERT INTO auth.role_permissions (role_id, permission_id)
 SELECT (SELECT role_sys_id FROM auth.roles WHERE role_name = 'PLANT_APP_ADMIN'), permission_sys_id
 FROM auth.permissions WHERE permission_code IN (
@@ -672,18 +504,19 @@ FROM auth.permissions WHERE permission_code IN (
     'edit.master.employee', 'view.plant', 'edit.plant', 'view.room', 'edit.room',
     'duc.master.view', 'duc.master.edit', 'certificate.download', 'label.qr.reconcile',
     'audit.trail.view', 'report.mis.export'
-);
+) ON CONFLICT (role_id, permission_id) DO NOTHING;
 
--- CUSTOMER_END_USER mapping
 INSERT INTO auth.role_permissions (role_id, permission_id)
 SELECT (SELECT role_sys_id FROM auth.roles WHERE role_name = 'CUSTOMER_END_USER'), permission_sys_id
 FROM auth.permissions WHERE permission_code IN (
     'lims.portal.dashboard', 'view.plant', 'view.room', 'duc.master.view',
     'certificate.download', 'audit.trail.view', 'report.mis.export'
-);
+) ON CONFLICT (role_id, permission_id) DO NOTHING;
 ```
 
---- USRE PErMISSIONS
+-- =============================================================================
+-- STEP 9: Direct Override User Permissions (Cleaned Syntax)
+-- =============================================================================
 ```sql
 INSERT INTO auth.user_permissions (user_id, permission_id) VALUES
 (1, 1), (1, 5), (1, 6), (1, 7), (1, 8), (1, 9), (1, 10), (1, 11), (1, 12), 
@@ -691,10 +524,8 @@ INSERT INTO auth.user_permissions (user_id, permission_id) VALUES
 ON CONFLICT (user_id, permission_id) DO NOTHING;
 
 INSERT INTO auth.user_permissions (user_id, permission_id) VALUES
-(3, 1), (3, 5), (3, 6), (3, 7), (3, 9), (3, 12), (3, 13), (3, 15), (3, 16), 
-(3, 17), (3, 18), 
+(3, 1), (3, 5), (3, 6), (3, 7), (3, 9), (3, 12), (3, 13), (3, 15), (3, 16), (3, 17), (3, 18)
 ON CONFLICT (user_id, permission_id) DO NOTHING;
-
 
 INSERT INTO auth.user_permissions (user_id, permission_id) VALUES
 (4, 16), (4, 18)
