@@ -461,6 +461,101 @@ CREATE TABLE employees (
 
 The following INSERT queries are sample seed data from the latest SQL. These can be used as reference data when setting up a fresh local database.
 
+
+Tenants
+```sql
+INSERT INTO auth.tenants(parent_company_id, plant_name, company_type)
+values (1, 'Bangalore', 'CUSTOMER'), (1, 'Hyderabad', 'CUSTOMER'),  (2, 'Bangalore', 'CUSTOMER'), 
+(2, 'Vizag', 'CUSTOMER'), (3, 'Bangalore', 'CUSTOMER'), (4, 'Bangalore', 'CUSTOMER');
+```
+
+Work location
+```sql
+INSERT INTO auth.work_locations (tenant_id, location_type_id, work_location_group, work_location_name)
+values (4, 1, 'Castor Head Office', 'Head office- Bangalore'),
+(4, 1, 'Castor Regional Site', 'Bangalore'), (4, 1, 'Castor Regional Site', 'Hyderabad'), (4, 1, 'Castor Regional Site', 'Chennai'),
+(1, 2, 'Dr Reddy Lab', 'DRLB1'), (1, 2, 'Dr Reddy Lab', 'FTO3'), (1, 2, 'Dr Reddy Lab', 'FTO9'), (2, 2, 'Biocon', 'BXXB1'); 
+```
+
+users
+```sql
+
+INSERT INTO auth.users (username, email, password_hash, full_name, is_active, user_type, tenant_id) 
+VALUES 
+(
+    'superadmin', 
+    'superadmin@vaalpro.com', 
+    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
+    'System Administrator', 
+    TRUE, 
+    'INTERNAL', 
+    NULL
+),
+(
+    'admin', 
+    'admin@vaalpro.com', 
+    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
+    'Vaalpro Admin', 
+    TRUE, 
+    'INTERNAL', 
+    NULL
+),
+(
+    'castor_admin', 
+    'castor.v@castor.com', 
+    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
+    'Castor Admin', 
+    TRUE, 
+    'VENDOR', 
+    (SELECT tenant_sys_id FROM auth.tenants WHERE plant_name = 'Bengaluru Formulation Plant - Block A')
+),
+(
+    'amit.kumar', 
+    'field.engineer@testing.com', 
+    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
+    'Amit Kumar', 
+    TRUE, 
+    'VENDOR', 
+    (SELECT tenant_sys_id FROM auth.tenants WHERE plant_name = 'Bengaluru Formulation Plant - Block A')
+),
+(
+    'Reddys.admin.bangalore.fto3', 
+    'reddy.banmgalore@reddylab.com', 
+    '$2b$10$wR8Yg67CjCHx5kQ9b7tMduMbyy3PHeUj9Mh.Npx95zMh9vGZfI96O', 
+    'Plant Admin', 
+    TRUE, 
+    'CUSTOMER', 
+    (SELECT tenant_sys_id FROM auth.tenants WHERE plant_name = 'Bengaluru Formulation Plant - Block A')
+)
+ON CONFLICT (username) DO NOTHING;
+```
+
+User roles
+```sql
+INSERT INTO auth.user_roles (user_id, role_id) VALUES
+(
+    (SELECT id FROM auth.users WHERE username = 'superadmin'),
+    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'GLOBAL_SUPER_ADMIN')
+),
+(
+    (SELECT id FROM auth.users WHERE username = 'admin'),
+    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'SYSTEM_ADMIN')
+),
+(
+    (SELECT id FROM auth.users WHERE username = 'castor_admin'),
+    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'VENDOR_ADMIN')
+),
+(
+    (SELECT id FROM auth.users WHERE username = 'amit.kumar'),
+    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'FIELD_ENGINEER')
+),
+(
+    (SELECT id FROM auth.users WHERE username = 'Reddys.admin.bangalore.fto3'),
+    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'PLANT_APP_ADMIN')
+)
+ON CONFLICT (user_id, role_id) DO NOTHING;
+```
+
 ```sql
 INSERT INTO auth.roles (role_name, is_internal) VALUES
 ('SYSTEM_ADMIN',       true),
