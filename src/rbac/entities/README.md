@@ -487,81 +487,83 @@ Role-permission seed samples:
 These queries expect the roles above and matching records in `auth.permissions` to already exist.
 
 ```sql
+
+INSERT INTO auth.permissions (permission_code, display_name, group_id) VALUES
+-- Identity / Vendor Roster
+('vendor.roster.manage', 'Manage Vendor Roster', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Identity & Access')),
+('customer.staff.manage', 'Manage Customer Staff', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Identity & Access')),
+
+-- Master Data & Infrastructure
+('plant.config.configure', 'Configure Plant Settings', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Global Infrastructure')),
+('plant.structure.manage', 'Manage Plant Structural Hierarchy', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Global Infrastructure')),
+('view.master.employee', 'View Master Employee Records', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Facility Master Data')),
+('edit.master.employee', 'Edit Master Employee Records', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Facility Master Data')),
+('view.plant', 'View Plant Data', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Facility Master Data')),
+('edit.plant', 'Edit Plant Data', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Facility Master Data')),
+('view.room', 'View Rooms', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Facility Master Data')),
+('edit.room', 'Edit Rooms', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Facility Master Data')),
+
+-- Operational Assets
+('instrument.reference.edit', 'Edit Reference Instruments', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Operational Assets')),
+('instrument.reference.view', 'View Reference Instruments', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Operational Assets')),
+('duc.master.view', 'View DUC Master List', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Operational Assets')),
+('duc.master.edit', 'Edit DUC Master List', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Operational Assets')),
+
+-- Workflows
+('service_order.create', 'Create Service Orders', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Workflow Management')),
+('service_order.schedule', 'Schedule Service Orders', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Workflow Management')),
+('engineer.assign.job', 'Assign Jobs to Engineers', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Workflow Management')),
+
+-- Testing & Field Execution
+('calibration.execute.test', 'Execute Calibration Tests', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Testing & Execution')),
+('caaldoc.submit.form', 'Submit Calibration Forms', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Testing & Execution')),
+('label.qr.reconcile', 'Reconcile QR Labels', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Testing & Execution')),
+
+-- Compliance & Dashboards
+('lims.portal.dashboard', 'View LIMS Portal Dashboard', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Compliance & Analytics')),
+('certificate.approve', 'Approve Compliance Certificates', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Compliance & Analytics')),
+('certificate.download', 'Download Compliance Certificates', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Compliance & Analytics')),
+('audit.trail.view', 'View Audit Trails', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Compliance & Analytics')),
+('report.mis.export', 'Export MIS Reports', (SELECT permission_group_sys_id FROM auth.permission_groups WHERE group_name = 'Compliance & Analytics'))
+ON CONFLICT (permission_code) DO NOTHING;
+
+
+
+-- VENDOR_ADMIN mapping
 INSERT INTO auth.role_permissions (role_id, permission_id)
-SELECT
-    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'VENDOR_ADMIN'),
-    permission_sys_id
-FROM auth.permissions
-WHERE permission_code IN (
-    'vendor.roster.manage',
-    'instrument.reference.edit',
-    'instrument.reference.view',
-    'service_order.create',
-    'service_order.schedule',
-    'engineer.assign.job',
-    'view.master.employee',
-    'view.plant',
-    'view.room',
-    'duc.master.view',
-    'certificate.download',
-    'label.qr.reconcile',
-    'audit.trail.view',
-    'report.mis.export'
+SELECT (SELECT role_sys_id FROM auth.roles WHERE role_name = 'VENDOR_ADMIN'), permission_sys_id
+FROM auth.permissions WHERE permission_code IN (
+    'vendor.roster.manage', 'instrument.reference.edit', 'instrument.reference.view',
+    'service_order.create', 'service_order.schedule', 'engineer.assign.job',
+    'view.master.employee', 'view.plant', 'view.room', 'duc.master.view',
+    'certificate.download', 'label.qr.reconcile', 'audit.trail.view', 'report.mis.export'
 );
 
+-- FIELD_ENGINEER mapping
 INSERT INTO auth.role_permissions (role_id, permission_id)
-SELECT
-    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'FIELD_ENGINEER'),
-    permission_sys_id
-FROM auth.permissions
-WHERE permission_code IN (
-    'instrument.reference.view',
-    'calibration.execute.test',
-    'caaldoc.submit.form',
-    'view.plant',
-    'view.room',
-    'duc.master.view',
-    'label.qr.reconcile'
+SELECT (SELECT role_sys_id FROM auth.roles WHERE role_name = 'FIELD_ENGINEER'), permission_sys_id
+FROM auth.permissions WHERE permission_code IN (
+    'instrument.reference.view', 'calibration.execute.test', 'caaldoc.submit.form',
+    'view.plant', 'view.room', 'duc.master.view', 'label.qr.reconcile'
 );
 
+-- PLANT_APP_ADMIN mapping
 INSERT INTO auth.role_permissions (role_id, permission_id)
-SELECT
-    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'PLANT_APP_ADMIN'),
-    permission_sys_id
-FROM auth.permissions
-WHERE permission_code IN (
-    'plant.config.configure',
-    'plant.structure.manage',
-    'customer.staff.manage',
-    'lims.portal.dashboard',
-    'certificate.approve',
-    'view.master.employee',
-    'edit.master.employee',
-    'view.plant',
-    'edit.plant',
-    'view.room',
-    'edit.room',
-    'duc.master.view',
-    'duc.master.edit',
-    'certificate.download',
-    'label.qr.reconcile',
-    'audit.trail.view',
-    'report.mis.export'
+SELECT (SELECT role_sys_id FROM auth.roles WHERE role_name = 'PLANT_APP_ADMIN'), permission_sys_id
+FROM auth.permissions WHERE permission_code IN (
+    'plant.config.configure', 'plant.structure.manage', 'customer.staff.manage',
+    'lims.portal.dashboard', 'certificate.approve', 'view.master.employee',
+    'edit.master.employee', 'view.plant', 'edit.plant', 'view.room', 'edit.room',
+    'duc.master.view', 'duc.master.edit', 'certificate.download', 'label.qr.reconcile',
+    'audit.trail.view', 'report.mis.export'
 );
 
+-- CUSTOMER_END_USER mapping
 INSERT INTO auth.role_permissions (role_id, permission_id)
-SELECT
-    (SELECT role_sys_id FROM auth.roles WHERE role_name = 'CUSTOMER_END_USER'),
-    permission_sys_id
-FROM auth.permissions
-WHERE permission_code IN (
-    'lims.portal.dashboard',
-    'view.plant',
-    'view.room',
-    'duc.master.view',
-    'certificate.download',
-    'audit.trail.view',
-    'report.mis.export'
+SELECT (SELECT role_sys_id FROM auth.roles WHERE role_name = 'CUSTOMER_END_USER'), permission_sys_id
+FROM auth.permissions WHERE permission_code IN (
+    'lims.portal.dashboard', 'view.plant', 'view.room', 'duc.master.view',
+    'certificate.download', 'audit.trail.view', 'report.mis.export'
 );
 ```
 
