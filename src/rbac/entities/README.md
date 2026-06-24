@@ -1,0 +1,328 @@
+# RBAC and Auth Tables
+
+This document describes the current auth/RBAC table structure based on the TypeORM entities in this folder and the latest SQL updates.
+
+Most tables in the SQL use the `auth` schema, for example `auth.users`, `auth.roles`, and `auth.tenants`. The `employees` table in the provided SQL is created without an explicit schema.
+
+## Table Overview
+
+| Table | Purpose |
+| --- | --- |
+| `auth.users` | Stores application user accounts and authentication data. |
+| `auth.roles` | Defines assignable roles, such as system, vendor, engineer, plant admin, and customer roles. |
+| `auth.user_roles` | Join table that assigns one or more roles to a user. |
+| `auth.permission_groups` | Groups related permissions for easier organization. |
+| `auth.permissions` | Defines individual permission codes used for access control. |
+| `auth.role_permissions` | Join table that grants permissions to roles. |
+| `auth.user_permissions` | Grants direct user-level permissions with optional JSON conditions. |
+| `auth.parent_companies` | Stores parent/corporate company records. |
+| `auth.tenants` | Stores plant/customer/vendor tenant records. |
+| `auth.work_location_types` | Stores tenant-specific work location type names. |
+| `auth.work_locations` | Stores tenant-specific work locations grouped by type. |
+| `employees` | Stores employee profile details linked to tenant, user, and work location records. |
+
+## `auth.users`
+
+Stores user account records.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `id` | Auto-increment primary key | User identifier. |
+| `username` | `varchar(50)`, unique | Login username. |
+| `email` | `varchar(255)`, unique | User email address. |
+| `password_hash` | `varchar(255)` | Bcrypt-hashed password. Never store the plain password. |
+| `full_name` | `varchar(100)`, nullable | Optional display name. |
+| `is_active` | Boolean, default `true` | Disabled users cannot log in. |
+| `last_login_at` | `timestamptz`, nullable | Updated after successful password validation. |
+| `refresh_token` | `text`, nullable | Bcrypt-hashed current refresh token. Cleared on logout. |
+| `tenant_id` | Integer, nullable FK to `auth.tenants.tenant_sys_id` | Tenant associated with the user. Added by latest SQL. |
+| `user_type` | `varchar(50)`, default `CUSTOMER` | User category/type. Added by latest SQL. |
+| `created_at` | `timestamptz` | Created timestamp. |
+| `updated_at` | `timestamptz` | Last updated timestamp. |
+
+Relations:
+
+- One user can have many `auth.user_roles` records.
+- One user can have many direct `auth.user_permissions` records.
+- `tenant_id` references `auth.tenants.tenant_sys_id` with `ON DELETE SET NULL`.
+- `employees.user_id` can reference `auth.users.id` with `ON DELETE SET NULL`.
+
+Auth usage:
+
+- `register` creates a user and stores `password_hash`.
+- `login` validates `username`, checks `is_active`, compares the password hash, updates `last_login_at`, and stores a hashed refresh token.
+- `refresh` compares the refresh token from the cookie with `refresh_token`.
+- `logout` clears `refresh_token`.
+
+Entity note:
+
+- `tenant_id` and `user_type` are present in the latest SQL but are not yet represented in `user.entity.ts`.
+
+## `auth.roles`
+
+Stores role definitions.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `role_sys_id` | Auto-increment primary key | Role identifier exposed as `id` in the entity. |
+| `role_name` | `varchar(100)`, unique | Role name. |
+| `is_internal` | Boolean, default `false` | Marks system/internal roles. |
+| `created_at` | `timestamptz` | Created timestamp. |
+| `updated_at` | `timestamptz` | Last updated timestamp. |
+
+Seeded roles from the latest SQL:
+
+- `SYSTEM_ADMIN`
+- `GLOBAL_SUPER_ADMIN`
+- `VENDOR_ADMIN`
+- `FIELD_ENGINEER`
+- `PLANT_APP_ADMIN`
+- `CUSTOMER_END_USER`
+
+Relations:
+
+- One role can be assigned to many users through `auth.user_roles`.
+- One role can have many permissions through `auth.role_permissions`.
+
+## `auth.user_roles`
+
+Join table between users and roles.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `user_id` | Primary key column, FK to `auth.users.id` | User receiving the role. |
+| `role_id` | Primary key column, FK to `auth.roles.role_sys_id` | Role assigned to the user. |
+| `assigned_at` | `timestamptz` | Timestamp when the role was assigned. |
+
+Relations:
+
+- `user_id` references `auth.users.id` with cascade delete.
+- `role_id` references `auth.roles.role_sys_id` with cascade delete.
+- The composite primary key prevents duplicate role assignments for the same user.
+
+## `auth.permission_groups`
+
+Groups permissions into functional areas.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `permission_group_sys_id` | Auto-increment primary key | Permission group identifier exposed as `id` in the entity. |
+| `group_name` | `varchar(100)`, unique | Group name. |
+| `description` | `text`, nullable | Optional explanation of the group. |
+| `created_at` | `timestamptz` | Created timestamp. |
+| `updated_at` | `timestamptz` | Last updated timestamp. |
+
+Seeded groups from the latest SQL:
+
+- `Global Infrastructure`
+- `Identity & Access`
+- `Facility Master Data`
+- `Operational Assets`
+- `Workflow Management`
+- `Testing & Execution`
+- `Compliance & Analytics`
+
+Relations:
+
+- One permission group can contain many permissions.
+
+## `auth.permissions`
+
+Stores individual access-control permissions.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `permission_sys_id` | Auto-increment primary key | Permission identifier exposed as `id` in the entity. |
+| `permission_code` | `varchar(100)`, unique | Stable permission code, for example `instrument.reference.view`. |
+| `display_name` | `varchar(100)` | Human-readable permission name. |
+| `group_id` | Nullable FK to `auth.permission_groups.permission_group_sys_id` | Optional permission group. |
+| `target_tenant_type` | `varchar(50)`, default `BOTH` | Tenant type that the permission applies to. Added by latest SQL. |
+| `created_at` | `timestamptz` | Created timestamp. |
+
+Relations:
+
+- A permission can belong to one `auth.permission_groups` record.
+- If a permission group is deleted, `group_id` is set to `NULL`.
+- A permission can be granted to many roles through `auth.role_permissions`.
+- A permission can be granted directly to many users through `auth.user_permissions`.
+
+Entity note:
+
+- `target_tenant_type` is present in the latest SQL but is not yet represented in `permission.entity.ts`.
+
+## `auth.role_permissions`
+
+Join table between roles and permissions.
+
+Latest SQL changes:
+
+- Drops the old `role_permission_sys_id` foreign key constraint if it exists.
+- Drops the old `role_permission_sys_id` column if it exists.
+- Adds `role_id` as the role foreign key.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `role_id` | Integer FK to `auth.roles.role_sys_id`, cascade delete | Role receiving the permission. |
+| `permission_id` | FK to `auth.permissions.permission_sys_id`, cascade delete | Permission granted to the role. |
+| `assigned_at` | `timestamptz`, default from entity/create timestamp | Timestamp when the permission was assigned. |
+
+Relations:
+
+- `role_id` references `auth.roles.role_sys_id` with cascade delete.
+- `permission_id` references `auth.permissions.permission_sys_id` with cascade delete.
+
+Entity note:
+
+- `role-permission.entity.ts` still uses the older column name `role_permission_sys_id`. It should be updated to `role_id` if the latest SQL is now the database source of truth.
+
+## `auth.user_permissions`
+
+Direct user-to-permission assignment table. This allows a user to receive a permission outside of role membership.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `user_id` | Integer FK to `auth.users.id`, cascade delete | User receiving the direct permission. |
+| `permission_id` | Integer FK to `auth.permissions.permission_sys_id`, cascade delete | Permission assigned directly to the user. |
+| `conditions` | `jsonb`, default `{}` | Optional rule/condition payload for scoped permissions. |
+| `assigned_at` | `timestamptz`, default `now()` | Timestamp when the permission was assigned. |
+
+Relations:
+
+- Composite primary key: `user_id`, `permission_id`.
+- Deleting the user or permission deletes the direct grant.
+
+## `auth.parent_companies`
+
+Stores parent or corporate company records.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `parent_company_sys_id` | `serial` primary key | Parent company identifier. |
+| `corporate_name` | `varchar(255)`, unique, not null | Corporate/parent company name. |
+| `created_at` | `timestamptz`, default `now()` | Created timestamp. |
+
+Relations:
+
+- One parent company can have many `auth.tenants` records.
+
+## `auth.tenants`
+
+Stores tenant records, such as plants or company units.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `tenant_sys_id` | `serial` primary key | Tenant identifier. |
+| `parent_company_id` | Integer FK to `auth.parent_companies.parent_company_sys_id`, nullable | Parent company for this tenant. |
+| `plant_name` | `varchar(255)`, not null | Plant or tenant display name. |
+| `company_type` | `varchar(50)`, not null | Type/category of company or tenant. |
+| `is_active` | Boolean, default `true` | Tenant active flag. |
+| `created_at` | `timestamptz`, default `now()` | Created timestamp. |
+
+Constraints and relations:
+
+- `parent_company_id` uses `ON DELETE SET NULL`.
+- Unique constraint `unique_plant_per_corp` on `parent_company_id`, `plant_name`.
+- Referenced by `auth.users.tenant_id`, `auth.work_location_types.tenant_id`, `auth.work_locations.tenant_id`, and `employees.tenant_id`.
+
+## `auth.work_location_types`
+
+Stores tenant-specific categories for work locations.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `location_type_sys_id` | `bigserial` primary key | Work location type identifier. |
+| `tenant_id` | `bigint`, FK to `auth.tenants.tenant_sys_id`, not null | Tenant that owns this location type. |
+| `location_type_name` | `varchar(100)`, not null | Location type name. |
+| `created_at` | Timestamp with time zone, default `current_timestamp` | Created timestamp. |
+
+Constraints and relations:
+
+- `tenant_id` references `auth.tenants.tenant_sys_id` with cascade delete.
+- Unique constraint `uq_tenant_location_type` on `tenant_id`, `location_type_name`.
+- One location type can have many `auth.work_locations`.
+
+## `auth.work_locations`
+
+Stores tenant-specific work locations.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `work_location_sys_id` | `bigserial` primary key | Work location identifier. |
+| `tenant_id` | `bigint`, FK to `auth.tenants.tenant_sys_id`, not null | Tenant that owns this work location. |
+| `location_type_id` | `bigint`, FK to `auth.work_location_types.location_type_sys_id`, not null | Type/category for this location. |
+| `work_location_group` | `varchar(150)`, not null | Grouping label for the location. |
+| `work_location_name` | `varchar(150)`, not null | Work location name. |
+| `created_at` | Timestamp with time zone, default `current_timestamp` | Created timestamp. |
+
+Constraints and relations:
+
+- `tenant_id` references `auth.tenants.tenant_sys_id` with cascade delete.
+- `location_type_id` references `auth.work_location_types.location_type_sys_id`.
+- Unique constraint `uq_tenant_location_details` on `tenant_id`, `location_type_id`, `work_location_group`, `work_location_name`.
+- Referenced by `employees.work_location_id` with `ON DELETE SET NULL`.
+
+## `employees`
+
+Stores employee profile details and optional links to application user and work location records.
+
+| Column | Type / Rule | Description |
+| --- | --- | --- |
+| `employee_sys_id` | `bigserial` primary key | Employee identifier. |
+| `tenant_id` | `bigint`, FK to `auth.tenants.tenant_sys_id`, not null | Tenant that owns this employee. |
+| `user_id` | `bigint`, unique, nullable FK to `auth.users.id` | Optional linked login user. |
+| `work_location_id` | `bigint`, nullable FK to `auth.work_locations.work_location_sys_id` | Optional assigned work location. |
+| `employee_id_code` | `varchar(50)`, not null | Tenant-specific employee code. |
+| `first_name` | `varchar(100)`, not null | Employee first name. |
+| `last_name` | `varchar(100)`, not null | Employee last name. |
+| `designation` | `varchar(150)`, nullable | Job designation/title. |
+| `department` | `varchar(150)`, nullable | Department name. |
+| `contact_number` | `varchar(20)`, nullable | Contact phone number. |
+| `is_active` | Boolean, default `true` | Employee active flag. |
+| `created_at` | Timestamp with time zone, default `current_timestamp` | Created timestamp. |
+
+Constraints and relations:
+
+- `tenant_id` references `auth.tenants.tenant_sys_id` with cascade delete.
+- `user_id` references `auth.users.id` with `ON DELETE SET NULL`.
+- `work_location_id` references `auth.work_locations.work_location_sys_id` with `ON DELETE SET NULL`.
+- Unique constraint `uq_tenant_employee_code` on `tenant_id`, `employee_id_code`.
+
+## Relationship Summary
+
+```text
+auth.parent_companies
+  -> auth.tenants
+    -> auth.users
+      -> auth.user_roles
+        -> auth.roles
+          -> auth.role_permissions
+            -> auth.permissions
+              -> auth.permission_groups
+
+auth.users
+  -> auth.user_permissions
+    -> auth.permissions
+
+auth.tenants
+  -> auth.work_location_types
+    -> auth.work_locations
+      -> employees
+
+auth.tenants
+  -> employees
+```
+
+In short: parent companies own tenants, tenants own users/locations/employees, users receive roles and optional direct permissions, roles receive permissions, and permissions can be grouped for organization.
+
+## Source Files and SQL Coverage
+
+| Source | Table coverage |
+| --- | --- |
+| `user.entity.ts` | `auth.users` base fields; missing latest `tenant_id` and `user_type` columns. |
+| `role.entity.ts` | `auth.roles` |
+| `user-role.entity.ts` | `auth.user_roles` |
+| `permission-group.entity.ts` | `auth.permission_groups` |
+| `permission.entity.ts` | `auth.permissions` base fields; missing latest `target_tenant_type` column. |
+| `role-permission.entity.ts` | Older `auth.role_permissions` shape; should be synced to latest `role_id` column. |
+| Latest SQL update | Adds/changes `auth.user_permissions`, `auth.parent_companies`, `auth.tenants`, `auth.work_location_types`, `auth.work_locations`, `employees`, `auth.users.tenant_id`, `auth.users.user_type`, `auth.permissions.target_tenant_type`, and `auth.role_permissions.role_id`. |
+
