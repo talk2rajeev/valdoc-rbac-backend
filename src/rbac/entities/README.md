@@ -476,12 +476,26 @@ values (1, 'Bangalore', 'CUSTOMER'), (1, 'Hyderabad', 'CUSTOMER'),  (2, 'Bangalo
 (2, 'Vizag', 'CUSTOMER'), (3, 'Bangalore', 'CUSTOMER'), (4, 'Bangalore', 'CUSTOMER');
 ```
 
-Work location
+--- Work location
 ```sql
+
+INSERT INTO auth.work_location_types (tenant_id, location_type_name) VALUES
+(1, 'Castor Site'),
+(1, 'Customer Site'),
+(1, 'Warehouse Storage')
+ON CONFLICT (tenant_id, location_type_name) DO NOTHING;
+
+
 INSERT INTO auth.work_locations (tenant_id, location_type_id, work_location_group, work_location_name)
 values (4, 1, 'Castor Head Office', 'Head office- Bangalore'),
 (4, 1, 'Castor Regional Site', 'Bangalore'), (4, 1, 'Castor Regional Site', 'Hyderabad'), (4, 1, 'Castor Regional Site', 'Chennai'),
 (1, 2, 'Dr Reddy Lab', 'DRLB1'), (1, 2, 'Dr Reddy Lab', 'FTO3'), (1, 2, 'Dr Reddy Lab', 'FTO9'), (2, 2, 'Biocon', 'BXXB1'); 
+
+INSERT INTO auth.work_location_types (tenant_id, location_type_name) VALUES
+(1, 'Manufacturing Block'),
+(1, 'Quality Control Lab'),
+(1, 'Warehouse Storage')
+ON CONFLICT (tenant_id, location_type_name) DO NOTHING;
 ```
 
 users
