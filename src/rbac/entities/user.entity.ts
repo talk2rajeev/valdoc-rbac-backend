@@ -1,5 +1,7 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, OneToMany, ManyToOne, JoinColumn } from 'typeorm';
 import { UserRole } from './user-role.entity';
+import { UserPermission } from './user-permission.entity';
+import { Tenant } from './tenant.entity';
 
 @Entity('users')
 export class User {
@@ -27,6 +29,12 @@ export class User {
   @Column({ name: 'refresh_token', type: 'text', nullable: true })
   refreshToken: string;
 
+  @Column({ name: 'tenant_id', type: 'integer', nullable: true })
+  tenantId: number;
+
+  @Column({ name: 'user_type', length: 50, default: 'CUSTOMER' })
+  userType: string;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
@@ -34,6 +42,13 @@ export class User {
   updatedAt: Date;
 
   // Relations
+  @ManyToOne(() => Tenant, (tenant) => tenant.users, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'tenant_id' })
+  tenant: Tenant;
+
   @OneToMany(() => UserRole, (userRole) => userRole.user)
   userRoles: UserRole[];
+
+  @OneToMany(() => UserPermission, (userPermission) => userPermission.user)
+  userPermissions: UserPermission[];
 }

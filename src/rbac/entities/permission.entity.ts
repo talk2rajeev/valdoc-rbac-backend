@@ -15,6 +15,9 @@ export class Permission {
   @Column({ name: 'group_id', nullable: true })
   groupId: number;
 
+  @Column({ name: 'target_tenant_type', length: 50, default: 'BOTH' })
+  targetTenantType: string;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

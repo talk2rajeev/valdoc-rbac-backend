@@ -4,8 +4,8 @@ import { Permission } from './permission.entity';
 
 @Entity('role_permissions')
 export class RolePermission {
-  @PrimaryColumn({ name: 'role_permission_sys_id' })
-  roleId: number;                    // Note: This is actually role_sys_id
+  @PrimaryColumn({ name: 'role_id' })
+  roleId: number;
 
   @PrimaryColumn({ name: 'permission_id' })
   permissionId: number;
@@ -15,7 +15,7 @@ export class RolePermission {
 
   // Relations
   @ManyToOne(() => Role, (role) => role.rolePermissions, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'role_permission_sys_id' })
+  @JoinColumn({ name: 'role_id' })
   role: Role;
 
   @ManyToOne(() => Permission, (permission) => permission.id, { onDelete: 'CASCADE' })

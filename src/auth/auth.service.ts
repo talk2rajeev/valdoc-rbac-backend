@@ -45,7 +45,7 @@ export class AuthService {
   }
 
   async login(user: any) {
-    const tokens = await this.getTokens(user.id, user.username);
+    const tokens = await this.getTokens(user.id, user.username, user.fullName);
     await this.updateRefreshToken(user.id, tokens.refreshToken);
 
     return {
@@ -62,7 +62,7 @@ export class AuthService {
     const refreshTokenMatches = await bcrypt.compare(refreshToken, user.refreshToken);
     if (!refreshTokenMatches) throw new ForbiddenException('Access Denied');
 
-    const tokens = await this.getTokens(user.id, user.username);
+    const tokens = await this.getTokens(user.id, user.username, user.fullName);
     await this.updateRefreshToken(user.id, tokens.refreshToken);
     return tokens;
   }
@@ -76,8 +76,8 @@ export class AuthService {
     await this.userRepository.update(userId, { refreshToken: hashedRefreshToken });
   }
 
-  private async getTokens(userId: number, username: string) {
-    const payload = { sub: userId, username };
+  private async getTokens(userId: number, username: string, fullName: string) {
+    const payload = { sub: userId, userId, username, fullName };
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         secret: process.env.JWT_SECRET || 'changeme-secret',
