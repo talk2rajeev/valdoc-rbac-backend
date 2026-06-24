@@ -462,6 +462,13 @@ CREATE TABLE employees (
 The following INSERT queries are sample seed data from the latest SQL. These can be used as reference data when setting up a fresh local database.
 
 
+Parent Company
+```sql
+INSERT INTO auth.parent_companies (corporate_name) 
+VALUES ('DR. Reddy''s Lab'), ('Biocon Ltd'), ('Cipla Pharmaceuticals'), ('Castor Engineering')
+ON CONFLICT (corporate_name) DO NOTHING;
+```
+
 Tenants
 ```sql
 INSERT INTO auth.tenants(parent_company_id, plant_name, company_type)
