@@ -669,6 +669,24 @@ FROM auth.permissions WHERE permission_code IN (
 );
 ```
 
+--- USRE PErMISSIONS
+```sql
+INSERT INTO auth.user_permissions (user_id, permission_id) VALUES
+(1, 1), (1, 5), (1, 6), (1, 7), (1, 8), (1, 9), (1, 10), (1, 11), (1, 12), 
+(1, 13), (1, 14), (1, 15), (1, 16), (1, 17), (1, 18), (1, 19), (1, 20), (1, 21), (1, 22), (1, 23), (1, 24), (1, 25)
+ON CONFLICT (user_id, permission_id) DO NOTHING;
+
+INSERT INTO auth.user_permissions (user_id, permission_id) VALUES
+(3, 1), (3, 5), (3, 6), (3, 7), (3, 9), (3, 12), (3, 13), (3, 15), (3, 16), 
+(3, 17), (3, 18), 
+ON CONFLICT (user_id, permission_id) DO NOTHING;
+
+
+INSERT INTO auth.user_permissions (user_id, permission_id) VALUES
+(4, 16), (4, 18)
+ON CONFLICT (user_id, permission_id) DO NOTHING;
+```
+
 ## Source Files and SQL Coverage
 
 | Source | Table coverage |
