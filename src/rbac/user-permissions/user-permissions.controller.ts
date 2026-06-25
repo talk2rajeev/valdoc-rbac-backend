@@ -1,7 +1,9 @@
-import { Controller, Get, Param, ParseIntPipe, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, HttpCode, HttpStatus, UseGuards } from '@nestjs/common';
 import { UserPermissionsService } from './user-permissions.service';
+import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
 
 @Controller('userpermissions')
+@UseGuards(JwtAuthGuard)
 export class UserPermissionsController {
     constructor(private readonly userPermissionsService: UserPermissionsService) { }
 
